@@ -9,6 +9,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -18,32 +19,38 @@ export default async function handler(req, res) {
   try {
     const { userId, to, subject, body } = req.body;
 
-    // 1. Get User Data
+    // 1. GET USER
     const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'User not found in database. Please log in to dashboard once to fix.' });
+    if (!userDoc.exists) return res.status(404).json({ error: 'User ID invalid' });
     
     let userData = userDoc.data();
 
-    // 2. CHECK TEAM STATUS (Inherit Pro from Team Owner)
-    if (userData.membership !== 'Pro' && userData.teamId) {
-        const teamOwnerDoc = await db.collection('users').doc(userData.teamId).get();
-        if (teamOwnerDoc.exists && teamOwnerDoc.data().membership === 'Pro') {
-            userData.membership = 'Pro'; // Grant temporary Pro status for this send
+    // 2. CHECK MEMBERSHIP (Fixing the typo issue)
+    // We look for 'membership' OR 'memerbship' just in case the typo exists
+    let status = userData.membership || userData.memerbship || 'Free';
+
+    // 3. CHECK TEAM INHERITANCE
+    if (status !== 'Pro' && userData.teamId) {
+        const teamOwner = await db.collection('users').doc(userData.teamId).get();
+        if (teamOwner.exists) {
+            const ownerData = teamOwner.data();
+            const ownerStatus = ownerData.membership || ownerData.memerbship || 'Free';
+            if (ownerStatus === 'Pro') status = 'Pro';
         }
     }
 
-    // 3. CHECK LIMITS (If still Free)
-    if (userData.membership !== 'Pro') {
+    // 4. ENFORCE LIMITS
+    if (status !== 'Pro') {
       if ((userData.usageCount || 0) >= 750) {
-        return res.status(403).json({ error: 'Monthly limit reached (750). Upgrade to Pro.' });
+        return res.status(403).json({ error: 'Free Limit Reached (750). Upgrade to Pro.' });
       }
       // Increment Usage
-      await db.collection('users').doc(userId).update({ 
-          usageCount: admin.firestore.FieldValue.increment(1) 
+      await db.collection('users').doc(userId).update({
+          usageCount: admin.firestore.FieldValue.increment(1)
       });
     }
 
-    // 4. SEND EMAIL
+    // 5. SEND EMAIL
     const transporter = nodemailer.createTransport({
       host: userData.smtp_host,
       port: Number(userData.smtp_port),
@@ -63,7 +70,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true });
 
   } catch (error) {
-    console.error("API Error:", error);
     return res.status(500).json({ error: error.message });
   }
 }
