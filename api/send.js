@@ -20,24 +20,24 @@ export default async function handler(req, res) {
 
     // 1. Get User Data
     const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found in database. Please log in to dashboard once to fix.' });
+    
     let userData = userDoc.data();
 
-    // 2. CHECK TEAM STATUS (New Feature)
-    // If user is NOT Pro, check if they belong to a Pro Team
+    // 2. CHECK TEAM STATUS (Inherit Pro from Team Owner)
     if (userData.membership !== 'Pro' && userData.teamId) {
         const teamOwnerDoc = await db.collection('users').doc(userData.teamId).get();
         if (teamOwnerDoc.exists && teamOwnerDoc.data().membership === 'Pro') {
-            // Inherit Pro status for sending
-            userData.membership = 'Pro'; 
+            userData.membership = 'Pro'; // Grant temporary Pro status for this send
         }
     }
 
-    // 3. CHECK LIMITS
+    // 3. CHECK LIMITS (If still Free)
     if (userData.membership !== 'Pro') {
       if ((userData.usageCount || 0) >= 750) {
-        return res.status(403).json({ error: 'Limit reached. Upgrade or join a Pro Team.' });
+        return res.status(403).json({ error: 'Monthly limit reached (750). Upgrade to Pro.' });
       }
+      // Increment Usage
       await db.collection('users').doc(userId).update({ 
           usageCount: admin.firestore.FieldValue.increment(1) 
       });
@@ -63,6 +63,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true });
 
   } catch (error) {
+    console.error("API Error:", error);
     return res.status(500).json({ error: error.message });
   }
 }
