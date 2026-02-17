@@ -1,11 +1,13 @@
 {
-  "name": "email-system",
-  "version": "1.0.0",
+  "name": "emailer-system",
+  "version": "2.0.0",
   "dependencies": {
-    "nodemailer": "^6.9.7",
     "firebase-admin": "^11.11.0",
+    "nodemailer": "^6.9.7",
     "stripe": "^14.10.0",
     "micro": "^10.0.1",
-    "protobufjs": "^7.2.6"
+    "protobufjs": "^7.2.5",
+    "google-gax": "^4.0.3",
+    "@grpc/grpc-js": "^1.9.13"
   }
 }
