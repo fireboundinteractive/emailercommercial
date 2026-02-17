@@ -4,6 +4,8 @@
   "dependencies": {
     "nodemailer": "^6.9.7",
     "firebase-admin": "^11.11.0",
+    "stripe": "^14.10.0",
+    "micro": "^10.0.1",
     "protobufjs": "^7.2.6"
   }
 }
