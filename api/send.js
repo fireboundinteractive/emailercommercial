@@ -1,70 +1,73 @@
 import nodemailer from 'nodemailer';
 import admin from 'firebase-admin';
 
-// 1. Initialize Firebase
-// We use an Environment Variable to keep your keys safe
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_KEY))
   });
 }
-
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  // 2. Set CORS Headers (Crucial for external access)
+  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle browser pre-flight check
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     const { userId, to, subject, body } = req.body;
 
-    // 3. Get User Settings from Database
-    const userDoc = await db.collection('users').doc(userId).get();
+    // 1. Get User Data
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
     
-    if (!userDoc.exists) {
-      return res.status(404).json({ error: 'User ID not found' });
-    }
-
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
     const userData = userDoc.data();
 
-    // 4. Check if they are a Paid User
+    // 2. CHECK QUOTAS (The Logic Change)
     if (!userData.isPro) {
-      return res.status(403).json({ error: 'Upgrade to Pro required to send emails.' });
+      // Get current month key (e.g., "2023-10")
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      
+      // Check if month changed, reset counter if needed
+      if (userData.usageMonth !== currentMonth) {
+         await userRef.update({ usageMonth: currentMonth, usageCount: 0 });
+         userData.usageCount = 0;
+      }
+
+      // Check Limit (750 emails)
+      if ((userData.usageCount || 0) >= 750) {
+        return res.status(403).json({ error: 'Free limit reached (750/mo). Upgrade to Pro.' });
+      }
+
+      // Increment Counter
+      await userRef.update({ usageCount: admin.firestore.FieldValue.increment(1) });
     }
 
-    // 5. Connect to User's SMTP
+    // 3. Connect & Send
     const transporter = nodemailer.createTransport({
       host: userData.smtp_host,
       port: Number(userData.smtp_port),
-      secure: Number(userData.smtp_port) === 465, // True if port is 465
+      secure: Number(userData.smtp_port) === 465,
       auth: {
         user: userData.smtp_user,
         pass: userData.smtp_pass,
       },
-      tls: {
-        rejectUnauthorized: false // Helps avoid errors on some shared hosting
-      }
+      tls: { rejectUnauthorized: false }
     });
 
-    // 6. Send the Email
     await transporter.sendMail({
-      from: userData.smtp_user, // Always send FROM their verified email
+      from: userData.smtp_user,
       to: to,
       subject: subject,
       html: body,
     });
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ success: true, usage: userData.isPro ? 'Unlimited' : `${userData.usageCount + 1}/750` });
 
   } catch (error) {
-    console.error("Send Error:", error);
     return res.status(500).json({ error: error.message });
   }
 }
