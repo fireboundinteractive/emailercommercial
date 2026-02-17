@@ -1,24 +1,17 @@
 import nodemailer from 'nodemailer';
-import admin from 'firebase-admin';
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_KEY))
-  });
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
-  const { to, teamName, inviterName } = req.body;
+  const { to, inviterName } = req.body;
 
-  // SYSTEM EMAIL CONFIG
+  // SYSTEM EMAIL CONFIG (Use Env Vars in Vercel!)
   const transporter = nodemailer.createTransport({
-    host: "smtp.livemail.co.uk", // Update if different
+    host: "smtp.livemail.co.uk", 
     port: 587,
     auth: {
       user: "emailer@fireboundinteractive.uk",
-      pass: process.env.SYSTEM_EMAIL_PASSWORD // Add this to Vercel Env Vars
+      pass: process.env.SYSTEM_EMAIL_PASSWORD 
     }
   });
 
@@ -26,12 +19,15 @@ export default async function handler(req, res) {
     await transporter.sendMail({
       from: '"Firebound Team" <emailer@fireboundinteractive.uk>',
       to: to,
-      subject: `You've been invited to join ${teamName}`,
+      subject: `Team Invitation from ${inviterName}`,
       html: `
-        <h2>Team Invitation</h2>
-        <p><b>${inviterName}</b> has invited you to join their team on Emailer.</p>
-        <p>Log in or Sign up to accept the invitation and access Pro features.</p>
-        <a href="https://emailercommercial.vercel.app">Click here to join</a>
+        <div style="font-family: sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #2dd4bf;">You're Invited!</h2>
+            <p><b>${inviterName}</b> has invited you to join their Pro Team on Emailer.</p>
+            <p>1. Log in or Sign Up at <a href="https://emailercommercial.vercel.app">Emailer Dashboard</a></p>
+            <p>2. Ask ${inviterName} for their <b>User ID</b>.</p>
+            <p>3. Use that ID in your code to access Pro features.</p>
+        </div>
       `
     });
     res.status(200).json({ success: true });
